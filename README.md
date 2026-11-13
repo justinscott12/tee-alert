@@ -53,7 +53,9 @@ don't get an email every 5 minutes when foreUP has a hiccup.
 ## Limits (it's a test app)
 
 - **App open:** checks every 60 s.
-- **App in background:** iOS runs `expo-background-task` when it decides to, at most every ~15 min and often
+- **Expo Go:** background checks aren't available at all (they need a development build). The app checks
+  only while it's open; the cloud poller covers the rest.
+- **App in background (dev build):** iOS runs `expo-background-task` when it decides to, at most every ~15 min and often
   less. Popular slots can get booked before that. That's why the cloud poller above exists.
 - It uses an undocumented foreUP endpoint. If the course changes its booking setup, update the IDs in
   `src/foreup.ts`.

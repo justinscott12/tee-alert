@@ -22,7 +22,13 @@ if (Platform.OS !== 'web') {
 /** iOS decides when this actually runs; 15 min is the floor, real gaps are often longer. */
 export async function setBackgroundWatching(on: boolean): Promise<void> {
   if (Platform.OS === 'web') return;
-  const registered = await TaskManager.isTaskRegisteredAsync(TASK);
-  if (on && !registered) await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: 15 });
-  if (!on && registered) await BackgroundTask.unregisterTaskAsync(TASK);
+  try {
+    const registered = await TaskManager.isTaskRegisteredAsync(TASK);
+    if (on && !registered) await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: 15 });
+    if (!on && registered) await BackgroundTask.unregisterTaskAsync(TASK);
+  } catch (e) {
+    // Expo Go has no background tasks (needs a dev build). Foreground polling and the
+    // cloud poller still work, so this must never block turning watching on.
+    console.warn('Background checks unavailable here:', e instanceof Error ? e.message : e);
+  }
 }

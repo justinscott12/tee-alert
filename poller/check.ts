@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Cloud poller: checks Mangrove Bay's tee sheet once and pushes new openings to ntfy.
 // Runs on Node 24+ directly (built-in TypeScript stripping), no dependencies:
 //   node poller/check.ts
