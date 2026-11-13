@@ -7,6 +7,8 @@
 //   NTFY_SERVER  default https://ntfy.sh
 //   STATE_FILE   default poller/.state/seen.json
 //   WATCH_FILE   default poller/watch.json
+//   LOOP_MINUTES keep checking for this long (0/unset = check once and exit)
+//   INTERVAL_SEC seconds between checks in loop mode (default 60)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { COURSE, fetchTeeTimes, type TeeTime } from '../src/foreup.ts';
@@ -20,6 +22,7 @@ type WatchFile = {
   earliest: string; // "07:00"
   latest: string; // "11:00"
   players: number;
+  activeHours?: [string, string]; // loop mode only checks inside this ET window
 };
 
 const watchFile = process.env.WATCH_FILE ?? 'poller/watch.json';
@@ -107,10 +110,13 @@ async function notify(slots: TeeTime[]): Promise<void> {
   if (!res.ok) throw new Error(`ntfy returned ${res.status}: ${await res.text()}`);
 }
 
-async function main() {
-  const w: WatchFile = JSON.parse(readFileSync(watchFile, 'utf8'));
+const readWatch = (): WatchFile => JSON.parse(readFileSync(watchFile, 'utf8'));
+
+async function checkOnce() {
+  const w = readWatch();
   const criteria: Criteria = { earliest: hhmm(w.earliest), latest: hhmm(w.latest), players: w.players };
-  const criteriaKey = JSON.stringify(w);
+  // Only what's matched on; editing activeHours shouldn't reset the baseline.
+  const criteriaKey = JSON.stringify([w.days, w.earliest, w.latest, w.players]);
   const now = courseNow();
   const dates = watchedDates(w, now.date);
 
@@ -135,8 +141,55 @@ async function main() {
   saveState(criteriaKey, matches.map((t) => t.time));
 }
 
-main().catch((e) => {
-  // A foreUP/ntfy hiccup shouldn't turn into a failed-workflow email every 5 minutes.
-  // State is untouched, so nothing is lost; the next run tries again.
-  console.log(`::warning::check failed: ${e instanceof Error ? e.message : e}`);
-});
+/** Never throws: a foreUP/ntfy hiccup shouldn't fail the workflow (and email you).
+ *  State is untouched on failure, so the next check simply retries. */
+async function safeCheck(): Promise<boolean> {
+  try {
+    await checkOnce();
+    return true;
+  } catch (e) {
+    console.log(`::warning::check failed: ${e instanceof Error ? e.message : e}`);
+    return false;
+  }
+}
+
+function withinActiveHours(): boolean {
+  const hours = readWatch().activeHours;
+  if (!hours) return true;
+  const now = courseNow().key.slice(11); // "HH:MM" ET
+  const mins = hhmm(now);
+  return mins >= hhmm(hours[0]) && mins < hhmm(hours[1]);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const MAX_BACKOFF_MS = 10 * 60_000;
+
+async function run() {
+  const loopMinutes = Number(process.env.LOOP_MINUTES ?? 0);
+  if (!loopMinutes) {
+    await safeCheck(); // single check (manual runs, local testing)
+    return;
+  }
+
+  // Loop mode: one GitHub job checks every INTERVAL_SEC for LOOP_MINUTES, then the
+  // next scheduled job takes over. GitHub's own cron can't go below 5 minutes.
+  const intervalMs = Number(process.env.INTERVAL_SEC ?? 60) * 1000;
+  const end = Date.now() + loopMinutes * 60_000;
+  let delay = intervalMs;
+  while (Date.now() < end) {
+    if (!withinActiveHours()) {
+      console.log(`${courseNow().key} ET · outside active hours, stopping`);
+      return;
+    }
+    const started = Date.now();
+    const ok = await safeCheck();
+    // Back off on errors (rate limits, outages) so we never hammer foreUP; reset on success.
+    delay = ok ? intervalMs : Math.min(delay * 2, MAX_BACKOFF_MS);
+    const wait = Math.max(delay - (Date.now() - started), 5_000);
+    if (Date.now() + wait >= end) return;
+    await sleep(wait);
+  }
+}
+
+run();

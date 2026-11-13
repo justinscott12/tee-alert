@@ -2,5 +2,6 @@
   "days": ["Fri", "Sat", "Sun"],
   "earliest": "07:00",
   "latest": "11:00",
-  "players": 2
+  "players": 2,
+  "activeHours": ["05:30", "21:00"]
 }

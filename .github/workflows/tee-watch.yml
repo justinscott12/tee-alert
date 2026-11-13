@@ -1,9 +1,17 @@
 name: Tee time watch
 
+# GitHub's scheduler can't run more often than every 5 minutes (and often starts late),
+# so each job loops itself: it checks every 60 s for ~58 minutes. A new run is queued
+# every 30 minutes; the concurrency group holds it until the current one finishes, so
+# there's always one job checking. Outside watch.json's activeHours a job exits at once.
 on:
   schedule:
-    - cron: '*/5 * * * *' # GitHub may start scheduled runs a few minutes late
-  workflow_dispatch: {}
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      loop_minutes:
+        description: 'Minutes to keep checking (0 = single check)'
+        default: '58'
 
 concurrency:
   group: tee-watch
@@ -12,7 +20,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +44,8 @@ jobs:
       - run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON poller/check.ts
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          LOOP_MINUTES: ${{ inputs.loop_minutes || '58' }}
+          INTERVAL_SEC: '60'
 
       - uses: actions/cache/save@v4
         if: always()
