@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "tee-alert",
+    "name": "Tee Alert",
     "slug": "tee-alert",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "dev.local.teealert"
     },
     "android": {
       "adaptiveIcon": {
@@ -20,6 +21,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-background-task",
+      "expo-web-browser"
+    ]
   }
 }

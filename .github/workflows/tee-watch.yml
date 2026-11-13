@@ -1,0 +1,44 @@
+name: Tee time watch
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # GitHub may start scheduled runs a few minutes late
+  workflow_dispatch: {}
+
+concurrency:
+  group: tee-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            poller
+            src/foreup.ts
+            src/match.ts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Last run's "already open" list, so only new openings alert.
+      - uses: actions/cache/restore@v4
+        with:
+          path: poller/.state
+          key: tee-state-${{ github.run_id }}
+          restore-keys: tee-state-
+
+      - run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON poller/check.ts
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: poller/.state
+          key: tee-state-${{ github.run_id }}
